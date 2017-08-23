@@ -371,24 +371,31 @@ static const char *dlerror(void)
 #endif
 
 MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
-    MVMSpeshGraph *sg = MVM_calloc(1, sizeof(MVMSpeshGraph));
-    MVMJitGraph *jg = MVM_calloc(1, sizeof(MVMJitGraph));
-    MVMJitNode *call_node = MVM_calloc(1, sizeof(MVMJitNode));
-    MVMJitNode *entry_label = MVM_calloc(1, sizeof(MVMJitNode));
+    MVMSpeshGraph sg;
+    MVMJitGraph jg = {&sg, NULL, NULL, 1, 0, NULL, 0, NULL, 0, NULL, 0, NULL};
+    MVMJitNode call_node;
+    MVMJitNode entry_label;
     MVMJitCode *jitcode;
 
-    jg->sg = sg; /* Only sg->sf is accessed and that's only for the bytecode dumper */
-    jg->first_node = entry_label;
-    entry_label->type = MVM_JIT_NODE_LABEL;
-    entry_label->u.label.name = 0;
-    entry_label->next = call_node;
-    call_node->type = MVM_JIT_NODE_CALL_C;
-    call_node->u.call.func_ptr = body->entry_point;
-    jg->last_node = call_node;
-    jg->num_labels = 1;
-    jitcode = MVM_jit_compile_graph(tc, jg);
+    jg.sg = &sg; /* Only sg->sf is accessed and that's only for the bytecode dumper */
+    jg.first_node = &entry_label;
 
-    MVM_free(sg);
+    entry_label.type = MVM_JIT_NODE_LABEL;
+    entry_label.u.label.name = 0;
+    entry_label.next = &call_node;
+
+    call_node.next = NULL;
+    call_node.type = MVM_JIT_NODE_CALL_C;
+    call_node.u.call.func_ptr = body->entry_point;
+    call_node.u.call.args = NULL;
+    call_node.u.call.num_args = 0;
+    call_node.u.call.has_vargs = 0;
+    call_node.u.call.rv_mode = 0;
+    call_node.u.call.rv_idx = 0;
+
+    jg.last_node = &call_node;
+    jg.num_labels = 1;
+    jitcode = MVM_jit_compile_graph(tc, &jg);
 
     return jitcode;
 }
