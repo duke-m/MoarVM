@@ -373,7 +373,7 @@ static const char *dlerror(void)
 MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     MVMSpeshGraph sg;
     MVMJitGraph jg = {&sg, NULL, NULL, 1, 0, NULL, 0, NULL, 0, NULL, 0, NULL};
-    MVMJitNode call_node;
+    MVMJitNode call_node, box_rv_node;
     MVMJitNode entry_label;
     MVMJitCode *jitcode;
 
@@ -384,18 +384,44 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     entry_label.u.label.name = 0;
     entry_label.next = &call_node;
 
-    call_node.next = NULL;
     call_node.type = MVM_JIT_NODE_CALL_C;
     call_node.u.call.func_ptr = body->entry_point;
     call_node.u.call.args = NULL;
     call_node.u.call.num_args = 0;
     call_node.u.call.has_vargs = 0;
-    call_node.u.call.rv_mode = 0;
-    call_node.u.call.rv_idx = 0;
+    call_node.u.call.rv_mode = MVM_JIT_RV_VOID;
+    call_node.u.call.rv_idx = -1;
 
-    jg.last_node = &call_node;
+
+    if (body->ret_type == MVM_NATIVECALL_ARG_INT) {
+        MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
+                                 { MVM_JIT_REG_VAL, { 0 } },
+                                 { MVM_JIT_PREVIOUS_RV, { 0 } }};
+
+        call_node.next = &box_rv_node;
+
+        box_rv_node.type = MVM_JIT_NODE_CALL_C;
+        box_rv_node.next = NULL;
+        box_rv_node.u.call.func_ptr = &MVM_nativecall_make_int;
+        box_rv_node.u.call.args = MVM_calloc(3, sizeof(MVMJitCallArg));
+        memcpy(box_rv_node.u.call.args, args, 3 * sizeof(MVMJitCallArg));
+        box_rv_node.u.call.num_args = 3;
+        box_rv_node.u.call.has_vargs = 0;
+        box_rv_node.u.call.rv_mode = MVM_JIT_RV_PTR;
+        box_rv_node.u.call.rv_idx = 1;
+
+        jg.last_node = &box_rv_node;
+    }
+    else {
+        call_node.next = NULL;
+        jg.last_node = &call_node;
+    }
+
     jg.num_labels = 1;
     jitcode = MVM_jit_compile_graph(tc, &jg);
+
+    if (jg.last_node == &box_rv_node)
+        MVM_free(box_rv_node.u.call.args);
 
     return jitcode;
 }
@@ -482,7 +508,14 @@ MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *l
 #ifdef HAVE_LIBFFI
     body->ffi_ret_type = MVM_nativecall_get_ffi_type(tc, body->ret_type);
 #endif
-    if (tc->instance->jit_enabled && body->num_args == 0 && body->ret_type == MVM_NATIVECALL_ARG_VOID) {
+    if (
+        tc->instance->jit_enabled
+        && body->num_args == 0
+        && (
+            body->ret_type == MVM_NATIVECALL_ARG_VOID
+            || body->ret_type == MVM_NATIVECALL_ARG_INT
+        )
+    ) {
         body->jitcode = create_caller_code(tc, body);
     }
     else

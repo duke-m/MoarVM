@@ -102,6 +102,7 @@ typedef enum {
     MVM_JIT_REG_STABLE,
     MVM_JIT_REG_OBJBODY,
     MVM_JIT_DATA_LABEL,
+    MVM_JIT_PREVIOUS_RV,
 } MVMJitArgType;
 
 struct MVMJitCallArg {

@@ -1925,6 +1925,9 @@ static void load_call_arg(MVMThreadContext *tc, MVMJitGraph *jg,
     case MVM_JIT_DATA_LABEL:
         | lea TMP6, [=>(arg.v.lit_i64)];
         break;
+    case MVM_JIT_PREVIOUS_RV:
+        | mov TMP6, RV
+        break;
     }
 }
 
@@ -2040,6 +2043,7 @@ static void emit_posix_callargs(MVMThreadContext *tc, MVMJitGraph *jg,
         case MVM_JIT_LITERAL_64:
         case MVM_JIT_LITERAL_PTR:
         case MVM_JIT_DATA_LABEL:
+        case MVM_JIT_PREVIOUS_RV:
             if (num_gpr < 6) {
                 in_gpr[num_gpr++] = args[i];
             } else {
