@@ -401,7 +401,7 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
 }
 
 /* Builds up a native call site out of the supplied arguments. */
-void MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *lib,
+MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *lib,
         MVMString *sym, MVMString *conv, MVMObject *arg_info, MVMObject *ret_info) {
     char *lib_name = MVM_string_utf8_c8_encode_C_string(tc, lib);
     char *sym_name = MVM_string_utf8_c8_encode_C_string(tc, sym);
@@ -489,6 +489,8 @@ void MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *lib,
         body->jitcode = NULL;
 
     MVM_telemetry_interval_stop(tc, interval_id, "nativecall built");
+
+    return body->jitcode != NULL;
 }
 
 static MVMObject * nativecall_cast(MVMThreadContext *tc, MVMObject *target_spec, MVMObject *target_type, void *cpointer_body) {
@@ -873,4 +875,19 @@ void MVM_nativecall_refresh(MVMThreadContext *tc, MVMObject *cthingy) {
                 MVM_nativecall_refresh(tc, body->child_objs[slot]);
         }
     }
+}
+
+MVMObject * MVM_nativecall_invoke_jit(MVMThreadContext *tc, MVMObject *res_type,
+        MVMObject *site) {
+    MVMNativeCallBody *body = MVM_nativecall_get_nc_body(tc, site);
+
+    void *actual_label = tc->cur_frame->jit_entry_label;
+    tc->cur_frame->jit_entry_label = body->jitcode->labels[0];
+    MVMROOT(tc, res_type, {
+        MVM_gc_mark_thread_blocked(tc);
+        MVM_jit_enter_code(tc, *tc->interp_cu, body->jitcode);
+        MVM_gc_mark_thread_unblocked(tc);
+    });
+    tc->cur_frame->jit_entry_label = actual_label;
+    return res_type;
 }
