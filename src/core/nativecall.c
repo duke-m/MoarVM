@@ -370,6 +370,29 @@ static const char *dlerror(void)
 }
 #endif
 
+MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
+    MVMSpeshGraph *sg = MVM_calloc(1, sizeof(MVMSpeshGraph));
+    MVMJitGraph *jg = MVM_calloc(1, sizeof(MVMJitGraph));
+    MVMJitNode *call_node = MVM_calloc(1, sizeof(MVMJitNode));
+    MVMJitNode *entry_label = MVM_calloc(1, sizeof(MVMJitNode));
+    MVMJitCode *jitcode;
+
+    jg->sg = sg; /* Only sg->sf is accessed and that's only for the bytecode dumper */
+    jg->first_node = entry_label;
+    entry_label->type = MVM_JIT_NODE_LABEL;
+    entry_label->u.label.name = 0;
+    entry_label->next = call_node;
+    call_node->type = MVM_JIT_NODE_CALL_C;
+    call_node->u.call.func_ptr = body->entry_point;
+    jg->last_node = call_node;
+    jg->num_labels = 1;
+    jitcode = MVM_jit_compile_graph(tc, jg);
+
+    MVM_free(sg);
+
+    return jitcode;
+}
+
 /* Builds up a native call site out of the supplied arguments. */
 void MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *lib,
         MVMString *sym, MVMString *conv, MVMObject *arg_info, MVMObject *ret_info) {
@@ -452,6 +475,11 @@ void MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *lib,
 #ifdef HAVE_LIBFFI
     body->ffi_ret_type = MVM_nativecall_get_ffi_type(tc, body->ret_type);
 #endif
+    if (tc->instance->jit_enabled && body->num_args == 0 && body->ret_type == MVM_NATIVECALL_ARG_VOID) {
+        body->jitcode = create_caller_code(tc, body);
+    }
+    else
+        body->jitcode = NULL;
 
     MVM_telemetry_interval_stop(tc, interval_id, "nativecall built");
 }

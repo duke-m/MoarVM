@@ -498,9 +498,25 @@ MVMObject * MVM_nativecall_invoke(MVMThreadContext *tc, MVMObject *res_type,
     void     *ptr         = NULL;
 
     unsigned int interval_id;
+    DCCallVM *vm;
+
+    if (body->jitcode) {
+        void *actual_label = tc->cur_frame->jit_entry_label;
+        tc->cur_frame->jit_entry_label = body->jitcode->labels[0];
+        MVMROOT(tc, args, {
+        MVMROOT(tc, res_type, {
+            MVM_gc_mark_thread_blocked(tc);
+            MVM_jit_enter_code(tc, *tc->interp_cu, body->jitcode);
+            MVM_gc_mark_thread_unblocked(tc);
+        });
+        });
+        tc->cur_frame->jit_entry_label = actual_label;
+        result = res_type;
+        return result;
+    }
 
     /* Create and set up call VM. */
-    DCCallVM *vm = dcNewCallVM(8192);
+    vm = dcNewCallVM(8192);
     dcMode(vm, body->convention);
     dcReset(vm);
 
