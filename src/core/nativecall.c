@@ -393,7 +393,13 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     call_node.u.call.rv_idx = -1;
 
 
-    if (body->ret_type == MVM_NATIVECALL_ARG_INT) {
+    if (body->ret_type == MVM_NATIVECALL_ARG_INT
+        || body->ret_type == MVM_NATIVECALL_ARG_CHAR
+        || body->ret_type == MVM_NATIVECALL_ARG_SHORT
+        || body->ret_type == MVM_NATIVECALL_ARG_INT
+        || body->ret_type == MVM_NATIVECALL_ARG_LONG
+        || body->ret_type == MVM_NATIVECALL_ARG_LONGLONG
+    ) {
         MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
                                  { MVM_JIT_REG_VAL, { 0 } },
                                  { MVM_JIT_PREVIOUS_RV, { 0 } }};
@@ -513,7 +519,11 @@ MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *l
         && body->num_args == 0
         && (
             body->ret_type == MVM_NATIVECALL_ARG_VOID
+            || body->ret_type == MVM_NATIVECALL_ARG_CHAR
+            || body->ret_type == MVM_NATIVECALL_ARG_SHORT
             || body->ret_type == MVM_NATIVECALL_ARG_INT
+            || body->ret_type == MVM_NATIVECALL_ARG_LONG
+            || body->ret_type == MVM_NATIVECALL_ARG_LONGLONG
         )
     ) {
         body->jitcode = create_caller_code(tc, body);
