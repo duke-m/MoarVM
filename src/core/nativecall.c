@@ -435,6 +435,12 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
 
         init_box_call_node(&box_rv_node, &MVM_nativecall_make_int);
     }
+    else if (body->ret_type == MVM_NATIVECALL_ARG_CPOINTER) {
+        call_node.next = &save_rv_node;
+        jg.last_node = unblock_gc_node.next = &box_rv_node;
+
+        init_box_call_node(&box_rv_node, &MVM_nativecall_make_cpointer);
+    }
     else {
         unblock_gc_node.next = NULL;
         jg.last_node = &unblock_gc_node;
@@ -541,6 +547,7 @@ MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *l
             || body->ret_type == MVM_NATIVECALL_ARG_INT
             || body->ret_type == MVM_NATIVECALL_ARG_LONG
             || body->ret_type == MVM_NATIVECALL_ARG_LONGLONG
+            || body->ret_type == MVM_NATIVECALL_ARG_CPOINTER
         )
     ) {
         body->jitcode = create_caller_code(tc, body);
