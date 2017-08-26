@@ -370,28 +370,58 @@ static const char *dlerror(void)
 }
 #endif
 
+void init_c_call_node(MVMJitNode *node, void *func_ptr) {
+    node->type = MVM_JIT_NODE_CALL_C;
+    node->u.call.func_ptr = func_ptr;
+    node->u.call.args = NULL;
+    node->u.call.num_args = 0;
+    node->u.call.has_vargs = 0;
+    node->u.call.rv_mode = MVM_JIT_RV_VOID;
+    node->u.call.rv_idx = -1;
+}
+
+void init_box_call_node(MVMJitNode *box_rv_node, void *func_ptr) {
+    MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
+                             { MVM_JIT_REG_VAL, { 0 } },
+                             { MVM_JIT_SAVED_RV, { 0 } }}; // NOT TRUE ANYMORE -- MVM_gc_mark_thread_unblocked overwrote RAX
+    init_c_call_node(box_rv_node, func_ptr);
+    box_rv_node->next = NULL;
+    box_rv_node->u.call.args = MVM_calloc(3, sizeof(MVMJitCallArg));
+    memcpy(box_rv_node->u.call.args, args, 3 * sizeof(MVMJitCallArg));
+    box_rv_node->u.call.num_args = 3;
+    box_rv_node->u.call.rv_mode = MVM_JIT_RV_PTR;
+    box_rv_node->u.call.rv_idx = 1;
+}
+
 MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     MVMSpeshGraph sg;
     MVMJitGraph jg = {&sg, NULL, NULL, 1, 0, NULL, 0, NULL, 0, NULL, 0, NULL};
-    MVMJitNode call_node, box_rv_node;
+    MVMJitNode block_gc_node, unblock_gc_node, call_node, save_rv_node, box_rv_node;
     MVMJitNode entry_label;
     MVMJitCode *jitcode;
+    MVMJitCallArg block_gc_args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } } };
 
     jg.sg = &sg; /* Only sg->sf is accessed and that's only for the bytecode dumper */
     jg.first_node = &entry_label;
 
     entry_label.type = MVM_JIT_NODE_LABEL;
     entry_label.u.label.name = 0;
-    entry_label.next = &call_node;
+    entry_label.next = &block_gc_node;
 
-    call_node.type = MVM_JIT_NODE_CALL_C;
-    call_node.u.call.func_ptr = body->entry_point;
-    call_node.u.call.args = NULL;
-    call_node.u.call.num_args = 0;
-    call_node.u.call.has_vargs = 0;
-    call_node.u.call.rv_mode = MVM_JIT_RV_VOID;
-    call_node.u.call.rv_idx = -1;
+    save_rv_node.type = MVM_JIT_NODE_SAVE_RV;
+    save_rv_node.next = &unblock_gc_node;
 
+    init_c_call_node(&block_gc_node,   &MVM_gc_mark_thread_blocked);
+    block_gc_node.u.call.args = block_gc_args;
+    block_gc_node.u.call.num_args = 1;
+    block_gc_node.next = &call_node;
+
+    init_c_call_node(&unblock_gc_node, &MVM_gc_mark_thread_unblocked);
+    unblock_gc_node.u.call.args = block_gc_args;
+    unblock_gc_node.u.call.num_args = 1;
+
+    init_c_call_node(&call_node, body->entry_point);
+    call_node.next = &unblock_gc_node;
 
     if (body->ret_type == MVM_NATIVECALL_ARG_INT
         || body->ret_type == MVM_NATIVECALL_ARG_CHAR
@@ -400,27 +430,14 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
         || body->ret_type == MVM_NATIVECALL_ARG_LONG
         || body->ret_type == MVM_NATIVECALL_ARG_LONGLONG
     ) {
-        MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
-                                 { MVM_JIT_REG_VAL, { 0 } },
-                                 { MVM_JIT_PREVIOUS_RV, { 0 } }};
+        call_node.next = &save_rv_node;
+        jg.last_node = unblock_gc_node.next = &box_rv_node;
 
-        call_node.next = &box_rv_node;
-
-        box_rv_node.type = MVM_JIT_NODE_CALL_C;
-        box_rv_node.next = NULL;
-        box_rv_node.u.call.func_ptr = &MVM_nativecall_make_int;
-        box_rv_node.u.call.args = MVM_calloc(3, sizeof(MVMJitCallArg));
-        memcpy(box_rv_node.u.call.args, args, 3 * sizeof(MVMJitCallArg));
-        box_rv_node.u.call.num_args = 3;
-        box_rv_node.u.call.has_vargs = 0;
-        box_rv_node.u.call.rv_mode = MVM_JIT_RV_PTR;
-        box_rv_node.u.call.rv_idx = 1;
-
-        jg.last_node = &box_rv_node;
+        init_box_call_node(&box_rv_node, &MVM_nativecall_make_int);
     }
     else {
-        call_node.next = NULL;
-        jg.last_node = &call_node;
+        unblock_gc_node.next = NULL;
+        jg.last_node = &unblock_gc_node;
     }
 
     jg.num_labels = 1;
@@ -927,9 +944,7 @@ MVMObject * MVM_nativecall_invoke_jit(MVMThreadContext *tc, MVMObject *res_type,
     void *actual_label = tc->cur_frame->jit_entry_label;
     tc->cur_frame->jit_entry_label = body->jitcode->labels[0];
     MVMROOT(tc, res_type, {
-        MVM_gc_mark_thread_blocked(tc);
         MVM_jit_enter_code(tc, *tc->interp_cu, body->jitcode);
-        MVM_gc_mark_thread_unblocked(tc);
     });
     tc->cur_frame->jit_entry_label = actual_label;
     return res_type;

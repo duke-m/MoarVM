@@ -23,3 +23,5 @@ void MVM_jit_emit_control(MVMThreadContext *tc, MVMJitGraph *jg,
                           MVMJitControl *ctrl, dasm_State **Dst);
 void MVM_jit_emit_data(MVMThreadContext *tc, MVMJitGraph *jg,
                        MVMJitData *data, dasm_State **Dst);
+void MVM_jit_emit_save_rv(MVMThreadContext *tc, MVMJitGraph *jg,
+                       dasm_State **Dst);

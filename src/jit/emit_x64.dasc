@@ -1925,8 +1925,8 @@ static void load_call_arg(MVMThreadContext *tc, MVMJitGraph *jg,
     case MVM_JIT_DATA_LABEL:
         | lea TMP6, [=>(arg.v.lit_i64)];
         break;
-    case MVM_JIT_PREVIOUS_RV:
-        | mov TMP6, RV
+    case MVM_JIT_SAVED_RV:
+        | mov TMP6, r12
         break;
     }
 }
@@ -2043,7 +2043,7 @@ static void emit_posix_callargs(MVMThreadContext *tc, MVMJitGraph *jg,
         case MVM_JIT_LITERAL_64:
         case MVM_JIT_LITERAL_PTR:
         case MVM_JIT_DATA_LABEL:
-        case MVM_JIT_PREVIOUS_RV:
+        case MVM_JIT_SAVED_RV:
             if (num_gpr < 6) {
                 in_gpr[num_gpr++] = args[i];
             } else {
@@ -2507,4 +2507,8 @@ void MVM_jit_emit_data(MVMThreadContext *tc, MVMJitGraph *jg, MVMJitData *data, 
         |.byte bytes[i];
     }
     |.code
+}
+
+void MVM_jit_emit_save_rv(MVMThreadContext *tc, MVMJitGraph *jg, dasm_State **Dst) {
+    | mov r12, RV
 }
