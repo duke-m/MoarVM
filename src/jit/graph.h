@@ -103,6 +103,8 @@ typedef enum {
     MVM_JIT_REG_OBJBODY,
     MVM_JIT_DATA_LABEL,
     MVM_JIT_SAVED_RV,
+    MVM_JIT_PARAM_I64,
+    MVM_JIT_PARAM_PTR,
 } MVMJitArgType;
 
 struct MVMJitCallArg {

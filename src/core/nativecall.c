@@ -422,7 +422,22 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
 
     init_c_call_node(&call_node, body->entry_point);
     call_node.next = &save_rv_node;
+    call_node.u.call.num_args = body->num_args;
     jg.last_node = unblock_gc_node.next = &box_rv_node;
+
+    if (
+        body->num_args == 1
+        && (
+            body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
+            || body->arg_types[0] == MVM_NATIVECALL_ARG_CPOINTER
+        )
+    ) {
+        call_node.u.call.args = MVM_malloc(body->num_args * sizeof(MVMJitCallArg));
+        call_node.u.call.args[0].type = body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
+            ? MVM_JIT_PARAM_I64
+            : MVM_JIT_PARAM_PTR;
+        call_node.u.call.args[0].v.lit_i64 = 0;
+    }
 
     if (body->ret_type == MVM_NATIVECALL_ARG_INT
         || body->ret_type == MVM_NATIVECALL_ARG_CHAR
@@ -456,13 +471,22 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
         call_node.next = &unblock_gc_node;
         unblock_gc_node.next = NULL;
         jg.last_node = &unblock_gc_node;
+        box_rv_node.u.call.args = NULL;
+    }
+
+    if (box_rv_node.u.call.args != NULL) {
+        box_rv_node.u.call.args[1].v.reg += body->num_args;
+        box_rv_node.u.call.rv_idx += body->num_args;
     }
 
     jg.num_labels = 1;
     jitcode = MVM_jit_compile_graph(tc, &jg);
 
-    if (jg.last_node == &box_rv_node)
+    if (box_rv_node.u.call.args != NULL)
         MVM_free(box_rv_node.u.call.args);
+
+    if (call_node.u.call.args != NULL)
+        MVM_free(call_node.u.call.args);
 
     return jitcode;
 }
@@ -551,7 +575,14 @@ MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *l
 #endif
     if (
         tc->instance->jit_enabled
-        && body->num_args == 0
+        && (
+            body->num_args == 0
+            || body->num_args == 1
+                && (
+                    body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
+                    || body->arg_types[0] == MVM_NATIVECALL_ARG_CPOINTER
+                )
+        )
         && (
             body->ret_type == MVM_NATIVECALL_ARG_VOID
             || body->ret_type == MVM_NATIVECALL_ARG_CHAR
