@@ -606,6 +606,11 @@ static void add_bb_facts(MVMThreadContext *tc, MVMSpeshGraph *g, MVMSpeshBB *bb,
             g->facts[result.reg.orig][result.reg.i].flags |= MVM_SPESH_FACT_DECONTED;
             break;
         }
+        case MVM_OP_nativecallinvokejit: {
+            for (i = 0; i < g->num_locals; i++)
+                g->facts[i][g->fact_counts[i] - 1].usages++;
+            break;
+        }
         default:
             if (ins->info->opcode == (MVMuint16)-1)
                 discover_extop(tc, g, ins);

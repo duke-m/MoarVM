@@ -398,8 +398,10 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     MVMJitGraph jg = {&sg, NULL, NULL, 1, 0, NULL, 0, NULL, 0, NULL, 0, NULL};
     MVMJitNode block_gc_node, unblock_gc_node, call_node, save_rv_node, box_rv_node;
     MVMJitNode entry_label;
-    MVMJitCode *jitcode;
+    MVMJitCode *jitcode = NULL;
     MVMJitCallArg block_gc_args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } } };
+
+    box_rv_node.u.call.args = NULL;
 
     jg.sg = &sg; /* Only sg->sf is accessed and that's only for the bytecode dumper */
     jg.first_node = &entry_label;
@@ -425,18 +427,22 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     call_node.u.call.num_args = body->num_args;
     jg.last_node = unblock_gc_node.next = &box_rv_node;
 
-    if (
-        body->num_args == 1
-        && (
-            body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
-            || body->arg_types[0] == MVM_NATIVECALL_ARG_CPOINTER
-        )
-    ) {
+    if (0 < body->num_args) {
+        MVMuint16 i = 0;
         call_node.u.call.args = MVM_malloc(body->num_args * sizeof(MVMJitCallArg));
-        call_node.u.call.args[0].type = body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
-            ? MVM_JIT_PARAM_I64
-            : MVM_JIT_PARAM_PTR;
-        call_node.u.call.args[0].v.lit_i64 = 0;
+        for (i = 0; i < body->num_args; i++) {
+            if (
+                body->arg_types[i] == MVM_NATIVECALL_ARG_CPOINTER
+            ) {
+                call_node.u.call.args[i].type = body->arg_types[i] == MVM_NATIVECALL_ARG_LONGLONG
+                    ? MVM_JIT_PARAM_I64
+                    : MVM_JIT_PARAM_PTR;
+                call_node.u.call.args[i].v.lit_i64 = i;
+            }
+            else {
+                goto cleanup;
+            }
+        }
     }
 
     if (body->ret_type == MVM_NATIVECALL_ARG_INT
@@ -467,11 +473,13 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
         box_rv_node.u.call.rv_mode = MVM_JIT_RV_PTR;
         box_rv_node.u.call.rv_idx = 1;
     }
-    else {
+    else if (body->ret_type == MVM_NATIVECALL_ARG_VOID) {
         call_node.next = &unblock_gc_node;
         unblock_gc_node.next = NULL;
         jg.last_node = &unblock_gc_node;
-        box_rv_node.u.call.args = NULL;
+    }
+    else {
+        goto cleanup;
     }
 
     if (box_rv_node.u.call.args != NULL) {
@@ -482,6 +490,7 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     jg.num_labels = 1;
     jitcode = MVM_jit_compile_graph(tc, &jg);
 
+cleanup:
     if (box_rv_node.u.call.args != NULL)
         MVM_free(box_rv_node.u.call.args);
 
@@ -573,27 +582,7 @@ MVMint8 MVM_nativecall_build(MVMThreadContext *tc, MVMObject *site, MVMString *l
 #ifdef HAVE_LIBFFI
     body->ffi_ret_type = MVM_nativecall_get_ffi_type(tc, body->ret_type);
 #endif
-    if (
-        tc->instance->jit_enabled
-        && (
-            body->num_args == 0
-            || body->num_args == 1
-                && (
-                    body->arg_types[0] == MVM_NATIVECALL_ARG_LONGLONG
-                    || body->arg_types[0] == MVM_NATIVECALL_ARG_CPOINTER
-                )
-        )
-        && (
-            body->ret_type == MVM_NATIVECALL_ARG_VOID
-            || body->ret_type == MVM_NATIVECALL_ARG_CHAR
-            || body->ret_type == MVM_NATIVECALL_ARG_SHORT
-            || body->ret_type == MVM_NATIVECALL_ARG_INT
-            || body->ret_type == MVM_NATIVECALL_ARG_LONG
-            || body->ret_type == MVM_NATIVECALL_ARG_LONGLONG
-            || body->ret_type == MVM_NATIVECALL_ARG_CPOINTER
-            || body->ret_type == MVM_NATIVECALL_ARG_UTF8STR
-        )
-    ) {
+    if (tc->instance->jit_enabled) {
         body->jitcode = create_caller_code(tc, body);
     }
     else
