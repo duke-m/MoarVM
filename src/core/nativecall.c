@@ -382,15 +382,15 @@ void init_c_call_node(MVMJitNode *node, void *func_ptr) {
 
 void init_box_call_node(MVMJitNode *box_rv_node, void *func_ptr) {
     MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
-                             { MVM_JIT_REG_VAL, { 0 } },
+                             { MVM_JIT_REG_DYNIDX, { 1 } },
                              { MVM_JIT_SAVED_RV, { 0 } }};
     init_c_call_node(box_rv_node, func_ptr);
     box_rv_node->next = NULL;
     box_rv_node->u.call.args = MVM_calloc(3, sizeof(MVMJitCallArg));
     memcpy(box_rv_node->u.call.args, args, 3 * sizeof(MVMJitCallArg));
     box_rv_node->u.call.num_args = 3;
-    box_rv_node->u.call.rv_mode = MVM_JIT_RV_PTR;
-    box_rv_node->u.call.rv_idx = 1;
+    box_rv_node->u.call.rv_mode = MVM_JIT_RV_DYNIDX;
+    box_rv_node->u.call.rv_idx = 0;
 }
 
 MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
@@ -462,7 +462,7 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     }
     else if (body->ret_type == MVM_NATIVECALL_ARG_UTF8STR) {
         MVMJitCallArg args[] = { { MVM_JIT_INTERP_VAR , { MVM_JIT_INTERP_TC } },
-                                 { MVM_JIT_REG_VAL, { 0 } },
+                                 { MVM_JIT_REG_DYNIDX, { 1 } },
                                  { MVM_JIT_LITERAL, { MVM_NATIVECALL_ARG_UTF8STR } },
                                  { MVM_JIT_SAVED_RV, { 0 } }};
         init_c_call_node(&box_rv_node, &MVM_nativecall_make_str);
@@ -470,8 +470,8 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
         box_rv_node.u.call.args = MVM_calloc(4, sizeof(MVMJitCallArg));
         memcpy(box_rv_node.u.call.args, args, 4 * sizeof(MVMJitCallArg));
         box_rv_node.u.call.num_args = 4;
-        box_rv_node.u.call.rv_mode = MVM_JIT_RV_PTR;
-        box_rv_node.u.call.rv_idx = 1;
+        box_rv_node.u.call.rv_mode = MVM_JIT_RV_DYNIDX;
+        box_rv_node.u.call.rv_idx = 0;
     }
     else if (body->ret_type == MVM_NATIVECALL_ARG_VOID) {
         call_node.next = &unblock_gc_node;
@@ -480,11 +480,6 @@ MVMJitCode *create_caller_code(MVMThreadContext *tc, MVMNativeCallBody *body) {
     }
     else {
         goto cleanup;
-    }
-
-    if (box_rv_node.u.call.args != NULL) {
-        box_rv_node.u.call.args[1].v.reg += body->num_args;
-        box_rv_node.u.call.rv_idx += body->num_args;
     }
 
     jg.num_labels = 1;

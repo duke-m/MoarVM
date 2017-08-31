@@ -101,6 +101,7 @@ typedef enum {
     MVM_JIT_LITERAL_PTR,
     MVM_JIT_REG_STABLE,
     MVM_JIT_REG_OBJBODY,
+    MVM_JIT_REG_DYNIDX,
     MVM_JIT_DATA_LABEL,
     MVM_JIT_SAVED_RV,
     MVM_JIT_PARAM_I64,
@@ -130,7 +131,9 @@ typedef enum {
     /* dereference and store */
     MVM_JIT_RV_DEREF,
     /* store local at address */
-    MVM_JIT_RV_ADDR
+    MVM_JIT_RV_ADDR,
+    /* store in register relative to cur_op */
+    MVM_JIT_RV_DYNIDX,
 } MVMJitRVMode;
 
 
